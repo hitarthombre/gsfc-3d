@@ -126,16 +126,16 @@ export default function FirstPersonController() {
     right: false,
   });
 
-  // Three raycasters:
+  // Rays
   const downRay = new THREE.Raycaster();
   const longRay = new THREE.Raycaster();
   const forwardDownRay = new THREE.Raycaster();
 
   const playerHeight = 3;
 
-  // -------------------------
+  // -----------------------------
   // KEYBOARD
-  // -------------------------
+  // -----------------------------
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code === "KeyW") keys.current.forward = true;
@@ -155,16 +155,18 @@ export default function FirstPersonController() {
     window.addEventListener("keyup", up);
 
     document.body.onclick = () => document.body.requestPointerLock();
+
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
   }, []);
 
-  // -------------------------
+  // -----------------------------
   // MOUSE LOOK
-  // -------------------------
+  // -----------------------------
   const pitchLimit = THREE.MathUtils.degToRad(85);
+
   useEffect(() => {
     const move = (e: MouseEvent) => {
       if (document.pointerLockElement !== document.body) return;
@@ -179,9 +181,9 @@ export default function FirstPersonController() {
     return () => window.removeEventListener("mousemove", move);
   }, [camera]);
 
-  // -------------------------
-  // MOVEMENT + FIXED STAIRS
-  // -------------------------
+  // -----------------------------
+  // MOVEMENT + STAIRS FIXED
+  // -----------------------------
   useFrame(() => {
     // Movement
     let dir = new THREE.Vector3();
@@ -196,59 +198,66 @@ export default function FirstPersonController() {
 
     camera.position.add(dir);
 
-    // -------------------------
-    // RAY 1: Downward ray (normal ground check)
-    // -------------------------
+    // -----------------------------
+    // ⭐ Make array of objects EXCLUDING stair colliders
+    // -----------------------------
+    const groundObjects: THREE.Object3D[] = [];
+    scene.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        if (
+          o.name.includes("StairCollider") === false // exclude stair colliders
+        ) {
+          groundObjects.push(o);
+        }
+      }
+    });
+
+    // -----------------------------
+    // RAY 1 — Downward (normal ground)
+    // -----------------------------
     downRay.set(
-      new THREE.Vector3(
-        camera.position.x,
-        camera.position.y - 0.2,
-        camera.position.z
-      ),
+      camera.position.clone().add(new THREE.Vector3(0, -0.2, 0)),
       new THREE.Vector3(0, -1, 0)
     );
-    const hitDown = downRay.intersectObjects(scene.children, true);
+    const hitDown = downRay.intersectObjects(groundObjects, true);
 
-    // -------------------------
-    // RAY 2: Long fallback ray (safety)
-    // -------------------------
+    // -----------------------------
+    // RAY 2 — Long fallback
+    // -----------------------------
     longRay.set(
-      new THREE.Vector3(
-        camera.position.x,
-        camera.position.y + 5,
-        camera.position.z
-      ),
+      camera.position.clone().add(new THREE.Vector3(0, 5, 0)),
       new THREE.Vector3(0, -1, 0)
     );
-    const hitLong = longRay.intersectObjects(scene.children, true);
+    const hitLong = longRay.intersectObjects(groundObjects, true);
 
-    // -------------------------
-    // ⭐ RAY 3: Forward-down ray (smooth stair going DOWN)
-    // -------------------------
+    // -----------------------------
+    // RAY 3 — Forward-down (stairs DOWN)
+    // -----------------------------
     const forward = new THREE.Vector3(0, 0, -1)
       .applyEuler(camera.rotation)
       .normalize();
 
-    const forwardPos = camera.position.clone().add(forward.multiplyScalar(0.6)); // 0.6 meters ahead
+    const forwardPos = camera.position.clone().add(forward.multiplyScalar(0.6));
 
     forwardDownRay.set(
       new THREE.Vector3(forwardPos.x, camera.position.y, forwardPos.z),
       new THREE.Vector3(0, -1, 0)
     );
 
-    const hitForward = forwardDownRay.intersectObjects(scene.children, true);
+    const hitForward = forwardDownRay.intersectObjects(groundObjects, true);
 
-    // figure out groundY
+    // Pick best ground
     let groundY = null;
 
     if (hitForward.length > 0) groundY = hitForward[0].point.y;
     else if (hitDown.length > 0) groundY = hitDown[0].point.y;
     else if (hitLong.length > 0) groundY = hitLong[0].point.y;
 
-    if (groundY === null) return;
+    if (groundY == null) return;
 
     const targetY = groundY + playerHeight;
 
+    // Smooth stepping
     camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.25);
   });
 
