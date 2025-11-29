@@ -142,35 +142,39 @@ function EntranceModel() {
   const { scene } = useGLTF("/models/Anviksha.glb");
 
   scene.traverse((obj) => {
-    if (obj.isMesh) {
-      obj.castShadow = true;
-      obj.receiveShadow = true;
-      obj.material.side = THREE.DoubleSide;
+    const mesh = obj as THREE.Mesh;
+
+    if (mesh.isMesh) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+
+      if (mesh.material) {
+        (mesh.material as THREE.Material).side = THREE.DoubleSide;
+      }
     }
 
-    // ⭐ Hide ALL colliders
-    // if (obj.name.includes("Collider") || obj.name.includes("StairCollider")) {
-    //   obj.visible = false;
-    //   obj.userData.isCollider = true;
-    // }
+    // Hide stair colliders
     if (
-      obj.name == "Collider" ||
-      obj.name == "StairCollider1" ||
-      obj.name == "StairCollider2"
+      mesh.name === "Collider" ||
+      mesh.name === "StairCollider1" ||
+      mesh.name === "StairCollider2"
     ) {
-      obj.visible = false;
-      obj.userData.isCollider = true;
+      mesh.visible = false;
+      mesh.userData.isCollider = true;
     }
+
+    // Visible colliders
     if (
-      obj.name == "AnvikshaBaseCollider" ||
-      obj.name == "AnvikshaBaseCollider1"
+      mesh.name === "AnvikshaBaseCollider" ||
+      mesh.name === "AnvikshaBaseCollider1"
     ) {
-      obj.visible = true;
-      obj.userData.isCollider = true;
+      mesh.visible = true;
+      mesh.userData.isCollider = true;
     }
-    if (obj.name.includes("GroundCollider")) {
-      obj.visible = true;
-      obj.userData.isCollider = true;
+
+    if (mesh.name.includes("GroundCollider")) {
+      mesh.visible = true;
+      mesh.userData.isCollider = true;
     }
   });
 
@@ -186,11 +190,8 @@ export default function Page() {
       <Canvas shadows camera={{ fov: 75, position: [0, 3, 10] }}>
         <SkyBackground />
 
-        <hemisphereLight
-          skyColor={"#ffffff"}
-          groundColor={"#ffffff"}
-          intensity={1.5}
-        />
+        {/* FIXED hemisphereLight */}
+        <hemisphereLight args={["#ffffff", "#ffffff", 1.5]} />
 
         <ambientLight intensity={0.4} />
 
