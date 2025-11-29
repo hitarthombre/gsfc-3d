@@ -117,7 +117,9 @@ import { useEffect, useRef } from "react";
 
 export default function FirstPersonController() {
   const { camera, scene } = useThree();
+
   const speed = 0.1;
+  const sensitivity = 0.0016;
 
   const keys = useRef({
     forward: false,
@@ -126,12 +128,32 @@ export default function FirstPersonController() {
     right: false,
   });
 
+  // FPS camera rig
+  const yawRef = useRef(new THREE.Object3D());
+  const pitchRef = useRef(new THREE.Object3D());
+
   // Rays
   const downRay = new THREE.Raycaster();
   const longRay = new THREE.Raycaster();
   const forwardDownRay = new THREE.Raycaster();
 
   const playerHeight = 3;
+
+  // -----------------------------
+  // SETUP CAMERA RIG
+  // -----------------------------
+  useEffect(() => {
+    const yaw = yawRef.current;
+    const pitch = pitchRef.current;
+
+    yaw.add(pitch);
+    pitch.add(camera);
+
+    yaw.position.copy(camera.position);
+    camera.position.set(0, 0, 0);
+
+    scene.add(yaw);
+  }, [camera, scene]);
 
   // -----------------------------
   // KEYBOARD
@@ -163,29 +185,39 @@ export default function FirstPersonController() {
   }, []);
 
   // -----------------------------
-  // MOUSE LOOK
+  // SMOOTH MOUSE LOOK
   // -----------------------------
   const pitchLimit = THREE.MathUtils.degToRad(85);
 
   useEffect(() => {
+    const yaw = yawRef.current;
+    const pitch = pitchRef.current;
+
     const move = (e: MouseEvent) => {
       if (document.pointerLockElement !== document.body) return;
 
-      camera.rotation.y -= e.movementX * 0.002;
+      yaw.rotation.y -= e.movementX * sensitivity;
 
-      const pitch = camera.rotation.x - e.movementY * 0.002;
-      camera.rotation.x = THREE.MathUtils.clamp(pitch, -pitchLimit, pitchLimit);
+      const nextPitch = pitch.rotation.x - e.movementY * sensitivity;
+      pitch.rotation.x = THREE.MathUtils.clamp(
+        nextPitch,
+        -pitchLimit,
+        pitchLimit
+      );
     };
 
     window.addEventListener("mousemove", move);
     return () => window.removeEventListener("mousemove", move);
-  }, [camera]);
+  }, []);
 
   // -----------------------------
-  // MOVEMENT + STAIRS FIXED
+  // MOVEMENT + STAIRS
   // -----------------------------
   useFrame(() => {
-    // Movement
+    const yaw = yawRef.current;
+    const pitch = pitchRef.current;
+
+    // Movement direction relative to yaw
     let dir = new THREE.Vector3();
     if (keys.current.forward) dir.z -= 1;
     if (keys.current.backward) dir.z += 1;
@@ -193,72 +225,60 @@ export default function FirstPersonController() {
     if (keys.current.right) dir.x += 1;
 
     dir.normalize();
-    dir.applyEuler(new THREE.Euler(0, camera.rotation.y, 0));
+    dir.applyEuler(new THREE.Euler(0, yaw.rotation.y, 0));
     dir.multiplyScalar(speed);
 
-    camera.position.add(dir);
+    yaw.position.add(dir);
 
     // -----------------------------
-    // ⭐ Make array of objects EXCLUDING stair colliders
+    // FILTER OUT STAIR COLLIDERS
     // -----------------------------
     const groundObjects: THREE.Object3D[] = [];
     scene.traverse((o) => {
       if (o instanceof THREE.Mesh) {
-        if (
-          o.name.includes("StairCollider") === false // exclude stair colliders
-        ) {
+        if (!o.name.includes("StairCollider")) {
           groundObjects.push(o);
         }
       }
     });
 
-    // -----------------------------
-    // RAY 1 — Downward (normal ground)
-    // -----------------------------
+    // DOWN RAY
     downRay.set(
-      camera.position.clone().add(new THREE.Vector3(0, -0.2, 0)),
+      yaw.position.clone().add(new THREE.Vector3(0, -0.2, 0)),
       new THREE.Vector3(0, -1, 0)
     );
     const hitDown = downRay.intersectObjects(groundObjects, true);
 
-    // -----------------------------
-    // RAY 2 — Long fallback
-    // -----------------------------
+    // LONG RAY
     longRay.set(
-      camera.position.clone().add(new THREE.Vector3(0, 5, 0)),
+      yaw.position.clone().add(new THREE.Vector3(0, 5, 0)),
       new THREE.Vector3(0, -1, 0)
     );
     const hitLong = longRay.intersectObjects(groundObjects, true);
 
-    // -----------------------------
-    // RAY 3 — Forward-down (stairs DOWN)
-    // -----------------------------
+    // FORWARD-DOWN RAY (stairs)
     const forward = new THREE.Vector3(0, 0, -1)
-      .applyEuler(camera.rotation)
+      .applyEuler(new THREE.Euler(0, yaw.rotation.y, 0))
       .normalize();
 
-    const forwardPos = camera.position.clone().add(forward.multiplyScalar(0.6));
+    const fPos = yaw.position.clone().add(forward.multiplyScalar(0.6));
 
     forwardDownRay.set(
-      new THREE.Vector3(forwardPos.x, camera.position.y, forwardPos.z),
+      new THREE.Vector3(fPos.x, yaw.position.y, fPos.z),
       new THREE.Vector3(0, -1, 0)
     );
-
     const hitForward = forwardDownRay.intersectObjects(groundObjects, true);
 
-    // Pick best ground
+    // Best ground hit
     let groundY = null;
-
     if (hitForward.length > 0) groundY = hitForward[0].point.y;
     else if (hitDown.length > 0) groundY = hitDown[0].point.y;
     else if (hitLong.length > 0) groundY = hitLong[0].point.y;
 
-    if (groundY == null) return;
-
-    const targetY = groundY + playerHeight;
-
-    // Smooth stepping
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.25);
+    if (groundY != null) {
+      const targetY = groundY + playerHeight;
+      yaw.position.y = THREE.MathUtils.lerp(yaw.position.y, targetY, 0.25);
+    }
   });
 
   return null;
